@@ -28,6 +28,25 @@ struct udp_hdr {
 	uint16_t udp_chksum;
 };
 
+struct dhcp_hdr {
+	uint8_t op;
+	uint8_t htype;
+	uint8_t hlen;
+	uint8_t hops;
+	uint32_t xid;
+	uint16_t secs;
+	uint16_t flags;
+	uint32_t ciaddr;
+	uint8_t yiaddr[4];
+	uint8_t siaddr[4];
+	uint32_t giaddr;
+	char chaddr[16];
+	char sname[64];
+	char file[128];
+	char magic[4];
+	char opt[40];
+};
+
 struct udp_packet {
 	struct ip_hdr iphdr;
 	struct udp_hdr udphdr;
@@ -36,6 +55,7 @@ struct udp_packet {
 union packet_u {
 	struct ip_hdr ip;
 	struct udp_packet udp;
+	struct dhcp_hdr dhcp;
 };
 
 struct eth_frame_s {
