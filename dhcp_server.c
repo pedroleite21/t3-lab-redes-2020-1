@@ -19,6 +19,8 @@ char this_mac[6];
 // recv
 #define PROTO_UDP	17
 #define DST_PORT	67
+#define DHCP_OFFER 2
+#define DHCP_ACK 5
 
 char bcast_mac[6] =	{0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 char dst_mac[6] =	{0x00, 0x00, 0x00, 0x22, 0x22, 0x22};
@@ -30,6 +32,7 @@ int sockfd, numbytes;
 char *p;
 
 union eth_buffer buffer_u;
+union eth_buffer buffer_r;
 
 //send
 struct ifreq if_idx, if_mac, ifopts;
@@ -49,15 +52,15 @@ uint32_t ipchksum(uint8_t *packet)
 	return sum;
 }
 
-int receive_dhcp() {
+int receive_dhcp_discover() {
 	while (1) {
-		numbytes = recvfrom(sockfd, buffer_u.raw_data, ETH_LEN, 0, NULL, NULL);
+		numbytes = recvfrom(sockfd, buffer_r.raw_data, ETH_LEN, 0, NULL, NULL);
 		/* received a ipv4 package */
-		if (buffer_u.cooked_data.ethernet.eth_type == ntohs(ETH_P_IP)){
+		if (buffer_r.cooked_data.ethernet.eth_type == ntohs(ETH_P_IP)){
 			/* received a DHCP request */
-			if (buffer_u.cooked_data.payload.ip.proto == PROTO_UDP && buffer_u.cooked_data.payload.udp.udphdr.dst_port == ntohs(DST_PORT))
+			if (buffer_r.cooked_data.payload.ip.proto == PROTO_UDP && buffer_r.cooked_data.payload.udp.udphdr.dst_port == ntohs(DST_PORT))
 			{
-        memcpy(dst_mac, buffer_u.cooked_data.ethernet.src_addr, 6);
+        		memcpy(dst_mac, buffer_r.cooked_data.ethernet.src_addr, 6);
 				printf("Recebido um DHCP request or discover\n");
 				return 0;
 			}
@@ -75,14 +78,14 @@ int dhcp_offer() {
 	/* Fill IP header data. Fill all fields and a zeroed CRC field, then update the CRC! */
 	buffer_u.cooked_data.payload.ip.ver = 0x45;
 	buffer_u.cooked_data.payload.ip.tos = 0x00;
-	buffer_u.cooked_data.payload.ip.len = htons(sizeof(struct ip_hdr) + sizeof(struct udp_hdr) + sizeof(struct dhcp_hdr));
+	buffer_u.cooked_data.payload.ip.len = htons(sizeof(struct ip_hdr) + sizeof(struct udp_hdr));
 	buffer_u.cooked_data.payload.ip.id = htons(0x00);
 	buffer_u.cooked_data.payload.ip.off = htons(0x00);
 	buffer_u.cooked_data.payload.ip.ttl = 50;
 	buffer_u.cooked_data.payload.ip.proto = 0xff;
 	buffer_u.cooked_data.payload.ip.sum = htons(0x0000);
 
-  buffer_u.cooked_data.payload.ip.src[0] = ip_server[0];
+  	buffer_u.cooked_data.payload.ip.src[0] = ip_server[0];
 	buffer_u.cooked_data.payload.ip.src[1] = ip_server[1];
 	buffer_u.cooked_data.payload.ip.src[2] = ip_server[2];
 	buffer_u.cooked_data.payload.ip.src[3] = ip_server[3];
@@ -92,42 +95,89 @@ int dhcp_offer() {
 	buffer_u.cooked_data.payload.ip.dst[3] = ip_sniff[3];
 	buffer_u.cooked_data.payload.ip.sum = htons((~ipchksum((uint8_t *)&buffer_u.cooked_data.payload.ip) & 0xffff));
 
-  /* UDP */
-  buffer_u.cooked_data.payload.udp.udphdr.src_port = htons(67);
+  	/* UDP */
+  	buffer_u.cooked_data.payload.udp.udphdr.src_port = htons(67);
 	buffer_u.cooked_data.payload.udp.udphdr.dst_port = htons(68);
 	buffer_u.cooked_data.payload.udp.udphdr.udp_len = htons(sizeof(struct udp_hdr));
 	buffer_u.cooked_data.payload.udp.udphdr.udp_chksum = 0;
 
-  /* DHCP */
-  buffer_u.cooked_data.payload.dhcp.op = 2;
-  buffer_u.cooked_data.payload.dhcp.htype = 1;
-  buffer_u.cooked_data.payload.dhcp.hlen = 6;
-  buffer_u.cooked_data.payload.dhcp.hops = 0;
-  buffer_u.cooked_data.payload.dhcp.xid = 0x3903F326;
-  buffer_u.cooked_data.payload.dhcp.secs = 0;
-  buffer_u.cooked_data.payload.dhcp.flags = 0;
-  buffer_u.cooked_data.payload.dhcp.ciaddr = 0;
-  memcpy(buffer_u.cooked_data.payload.dhcp.yiaddr, ip_sniff, 4);
-  memcpy(buffer_u.cooked_data.payload.dhcp.siaddr, ip_server, 4);
-  buffer_u.cooked_data.payload.dhcp.giaddr = 0;
+	/* DHCP */
+	buffer_u.cooked_data.payload.dhcp.op = 2;
+	buffer_u.cooked_data.payload.dhcp.htype = 1;
+	buffer_u.cooked_data.payload.dhcp.hlen = 6;
+	buffer_u.cooked_data.payload.dhcp.hops = 0;
+	buffer_u.cooked_data.payload.dhcp.xid = 0x3903F326;
+	buffer_u.cooked_data.payload.dhcp.secs = 0;
+	buffer_u.cooked_data.payload.dhcp.flags = 0;
+	buffer_u.cooked_data.payload.dhcp.ciaddr = 0;
+	memcpy(buffer_u.cooked_data.payload.dhcp.yiaddr, ip_sniff, 4);
+	memcpy(buffer_u.cooked_data.payload.dhcp.siaddr, ip_server, 4);
+	buffer_u.cooked_data.payload.dhcp.giaddr = 0;
 
-  /* magic cookie */
-  buffer_u.cooked_data.payload.dhcp.magic[0] = 0x63;
+  	/* magic cookie */
+  	buffer_u.cooked_data.payload.dhcp.magic[0] = 0x63;
 	buffer_u.cooked_data.payload.dhcp.magic[1] = 0x82;
 	buffer_u.cooked_data.payload.dhcp.magic[2] = 0x53;
 	buffer_u.cooked_data.payload.dhcp.magic[3] = 0x63;
 
+	buffer_u.cooked_data.payload.dhcp.opt[0] = 53;
+	buffer_u.cooked_data.payload.dhcp.opt[1] = 1;
+	buffer_u.cooked_data.payload.dhcp.opt[2] = DHCP_OFFER;
+	buffer_u.cooked_data.payload.dhcp.opt[3] = 54;
+	buffer_u.cooked_data.payload.dhcp.opt[4] = 4;
+	buffer_u.cooked_data.payload.dhcp.opt[5] = ip_sniff[0];
+	buffer_u.cooked_data.payload.dhcp.opt[6] = ip_sniff[1];
+	buffer_u.cooked_data.payload.dhcp.opt[7] = ip_sniff[2];
+	buffer_u.cooked_data.payload.dhcp.opt[8] = ip_sniff[3];
+	buffer_u.cooked_data.payload.dhcp.opt[9] = 51;
+	buffer_u.cooked_data.payload.dhcp.opt[10] = 4;
+	buffer_u.cooked_data.payload.dhcp.opt[11] = 0x00;
+	buffer_u.cooked_data.payload.dhcp.opt[12] = 0x01;
+	buffer_u.cooked_data.payload.dhcp.opt[13] = 0x51;
+	buffer_u.cooked_data.payload.dhcp.opt[14] = 0x80;
+	buffer_u.cooked_data.payload.dhcp.opt[15] = 58;
+	buffer_u.cooked_data.payload.dhcp.opt[16] = 4;
+	buffer_u.cooked_data.payload.dhcp.opt[17] = 0x00;
+	buffer_u.cooked_data.payload.dhcp.opt[18] = 0x00;
+	buffer_u.cooked_data.payload.dhcp.opt[19] = 0xa8;
+	buffer_u.cooked_data.payload.dhcp.opt[20] = 0xc0;
+	buffer_u.cooked_data.payload.dhcp.opt[21] = 1;
+	buffer_u.cooked_data.payload.dhcp.opt[22] = 4;
+	buffer_u.cooked_data.payload.dhcp.opt[23] = 255;
+	buffer_u.cooked_data.payload.dhcp.opt[24] = 255;
+	buffer_u.cooked_data.payload.dhcp.opt[25] = 255;
+	buffer_u.cooked_data.payload.dhcp.opt[26] = 0;
+	buffer_u.cooked_data.payload.dhcp.opt[27] = 3;
+	buffer_u.cooked_data.payload.dhcp.opt[28] = ip_server[0];
+	buffer_u.cooked_data.payload.dhcp.opt[29] = ip_server[1];
+	buffer_u.cooked_data.payload.dhcp.opt[30] = ip_server[2];
+	buffer_u.cooked_data.payload.dhcp.opt[31] = ip_server[3];
+	buffer_u.cooked_data.payload.dhcp.opt[32] = ip_server[4];
+	buffer_u.cooked_data.payload.dhcp.opt[33] = 255;
+	
 	/* Send it.. */
 	memcpy(socket_address.sll_addr, dst_mac, 6);
-	if (sendto(sockfd, buffer_u.raw_data, size + sizeof(struct eth_hdr) + sizeof(struct ip_hdr), 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0)
+	if (sendto(sockfd, buffer_u.raw_data, size + sizeof(struct eth_hdr) + sizeof(struct ip_hdr) + sizeof(struct udp_hdr), 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0)
 	{
 		printf("Send failed\n");
 		return 1;
 	}
-		
 
 	return 0;
 }
+
+int dhcp_ack() {
+	buffer_u.cooked_data.payload.dhcp.opt[2] = DHCP_ACK;
+	
+	memcpy(socket_address.sll_addr, dst_mac, 6);
+	if (sendto(sockfd, buffer_u.raw_data, size + sizeof(struct eth_hdr) + sizeof(struct ip_hdr) + sizeof(struct udp_hdr), 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0)
+	{
+		printf("Send failed\n");
+		return 1;
+	}
+	return 0;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -168,16 +218,20 @@ int main(int argc, char *argv[])
 	memcpy(this_mac, if_mac.ifr_hwaddr.sa_data, 6);
 
 	/* procurar um DHCP DISCOVER */
-	printf("1. Sniff na rede a procura de um DHCP OFFER\n");
-	receive_dhcp();
+	printf("1. Sniff na rede a procura de um DHCP DISCOVERY\n");
+	// receive_dhcp_discover();
 
 	/* enviar um DHCP OFFER para o endereco sniff */
 	printf("2. Montando um DHCP OFFER para o endereço sniff\n");
 	dhcp_offer();
 
 	/* receber um DHCP REQUEST */
+	printf("1. Sniff na rede a procura de um DHCP REQUEST\n");
+	// receive_dhcp_discover();
 
 	/* enviar um DHCP PACK */
+	printf("2. Montando um DHCP ACK para o endereço sniff\n");
+	// dhcp_ack();
 
   return 0;
 }
